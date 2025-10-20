@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 # from measurements import higham_psd, near_psd -> fix methods
 
 
@@ -78,3 +79,70 @@ def monte_carlo_VaR_sim(mean_vector, covariance_matrix, current_prices, holdings
     abs_VaR = portfolio_value - percentile_portfolio
     rel_VaR = np.mean(sorted_values) - percentile_portfolio
     return abs_VaR, rel_VaR
+
+
+def VaR_ES_2_level_sim_from_copula(sample_data: pd.DataFrame, holdings: np.array, prices: np.array, fix_method, n_sims = 100_000, alpha=0.05, seed=1234):
+
+    if prices.shape != holdings.shape or len(sample_data.columns) != prices.shape[0]:
+        raise ValueError("Data columns, holdings, and prices must all contain data for the sam amount of assets")
+
+    means, cov = fit_normal_dist_from_data(sample_data)
+
+    quantile_vectors = pd.DataFrame()
+
+    for i, column in enumerate(sample_data.columns):
+        mean = means.iloc[i]
+        sigma = np.sqrt(cov.iloc[i,i])
+        # print(i, column, mean, sigma)
+        col_data = sample_data.loc[:, column]
+        U_vector = norm.cdf(col_data, loc=mean, scale=sigma) # get U from observations
+        Z_vector = norm.ppf(U_vector, loc=0, scale = 1) # get Z from U vectors (not needed if using spearman correlation)
+        quantile_vectors[column] = Z_vector
+
+    corr = compute_correlation(quantile_vectors, method="spearman")
+    # print("CORR", corr)
+    simulated_Zs = normal_monte_carlo_simulation(mean_vector=np.zeros(len(means)), covariance_matrix=corr, n_sims=n_sims, fix_method=fix_method, seed=seed)
+    simulated_results = pd.DataFrame()
+
+    for i, column in enumerate(sample_data.columns):
+
+        col_data = simulated_Zs.T[:, i]
+        U_vector = norm.cdf(col_data, loc=0, scale=1)
+
+        # get original distribution back
+        mean = means.iloc[i]
+        sigma = np.sqrt(cov.iloc[i,i])
+        F_vector = norm.ppf(U_vector, loc=mean, scale = sigma)
+
+        simulated_results[column] = F_vector
+
+    simulated_results["Total"] = ((simulated_results.dot(holdings*prices)) / holdings.dot(prices))
+
+    risk_results = []
+    for i, column in enumerate(simulated_results.columns):
+        if column == "Total":
+            invest_value = prices.dot(holdings)
+        else:
+            invest_value = prices[i]*holdings[i]
+
+        sim_size = len(simulated_results[column])
+        index = int(np.floor(alpha*sim_size))
+        sorted_col = simulated_results[column].sort_values().reset_index(drop=True)
+
+        # VaR 95% is var expressed as a percentage of initial investment
+        # VaR95 / initial portfolio value = VaR 95_Pct
+
+        VaR_95pct = -sorted_col.iloc[index]
+        VaR95 = VaR_95pct * invest_value
+        ES_95pct = -sorted_col[:index+1].mean()
+        ES95 = ES_95pct * invest_value
+        risk_results.append({
+                    "Stock": column,
+                    "VaR95": VaR95,
+                    "ES95": ES95,
+                    "VaR95_Pct": VaR_95pct,
+                    "ES95_Pct": ES_95pct
+                }
+        )
+    
+    return pd.DataFrame(risk_results)

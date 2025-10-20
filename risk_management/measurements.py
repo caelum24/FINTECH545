@@ -2,7 +2,19 @@ import pandas as pd
 import numpy as np
 from numpy.linalg import cholesky
 
-def compute_correlation(x:pd.DataFrame, method="pearson", drop_missing = False, exponentially_weighted = False, lambda_ = 0.97):
+def compute_correlation(x:pd.DataFrame, method="pearson", drop_missing = False, exponentially_weighted = False, lambda_ = 0.97, ddof: int =1):
+    """
+        This method takes in an MxN dataframe where M = number of entries (rows) and
+        N = number of variables. A method is chosen and whether or not we will drop
+        all rows with missing values or just drop pairwise values. 
+
+        x: our data
+        method: correlation method
+        drop_missing: True if drop all na rows, False if pairwise drop
+        exponentially_weighted: True if correlation is exponentially weighted
+        lambda: weighting for exponential weighting
+    """
+    
     # drop missing drops all rows with missing data
     # otherwise, we compute covariance pairwise, dropping only pairwise missing values
     
@@ -17,9 +29,21 @@ def compute_correlation(x:pd.DataFrame, method="pearson", drop_missing = False, 
         last_ewm_corr_matrix = ewm_corrs_over_time.loc[ewm_corrs_over_time.index.get_level_values(0).max()]
         return last_ewm_corr_matrix
     else:
-        return x.corr(method=method)
+        return x.corr(method=method, ddof=ddof) # default ddof = 1 (unbiased)
 
-def compute_covariance(x:pd.DataFrame, drop_missing = False, exponentially_weighted = False, lambda_ = 0.97):
+def compute_covariance(x:pd.DataFrame, drop_missing = False, exponentially_weighted = False, lambda_ = 0.97, ddof:int=1):
+    """
+        This method takes in an MxN dataframe where M = number of entries (rows) and
+        N = number of variables. A method is chosen and whether or not we will drop
+        all rows with missing values or just drop pairwise values. 
+
+        x: our data
+        method: correlation method
+        drop_missing: True if drop all na rows, False if pairwise drop
+        exponentially_weighted: True if correlation is exponentially weighted
+        lambda: weighting for exponential weighting
+    """
+
     # drop missing drops all rows with missing data
     # otherwise, we compute covariance pairwise, dropping only pairwise missing values
     
@@ -31,9 +55,15 @@ def compute_covariance(x:pd.DataFrame, drop_missing = False, exponentially_weigh
         last_ewm_cov_matrix = ewm_covs_over_time.loc[ewm_covs_over_time.index.get_level_values(0).max()]
         return last_ewm_cov_matrix
     else:
-        return x.cov()
+        return x.cov(ddof=ddof)
 
 def compute_covariance_with_ew_corr(x: pd.DataFrame, corr_lambda, var_lambda):
+
+    """
+        Use the EWM correlations along with the EWM variances of our variables
+        to discern the EWM covariances of our data
+    
+    """
     ewm_var = x.ewm(alpha = (1-var_lambda),).var(bias=True)
     std_devs = np.sqrt(ewm_var.iloc[-1])
     std_dev_products_matrix = np.outer(std_devs, std_devs)
