@@ -1,5 +1,8 @@
 import numpy as np
 import pandas as pd
+from .distributions import fit_multivariate_normal_dist
+from scipy.stats import norm
+from .measurements import compute_correlation
 # from measurements import higham_psd, near_psd -> fix methods
 
 
@@ -86,7 +89,7 @@ def VaR_ES_2_level_sim_from_copula(sample_data: pd.DataFrame, holdings: np.array
     if prices.shape != holdings.shape or len(sample_data.columns) != prices.shape[0]:
         raise ValueError("Data columns, holdings, and prices must all contain data for the sam amount of assets")
 
-    means, cov = fit_normal_dist_from_data(sample_data)
+    means, cov = fit_multivariate_normal_dist(sample_data)
 
     quantile_vectors = pd.DataFrame()
 

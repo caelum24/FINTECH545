@@ -34,7 +34,7 @@ def univariate_t_VaR(mu: float, sigma: float, nu: float, alpha: float = 0.05):
 #     mu_vector, cov = fit_multivariate_normal_dist(x)
 #     mu = mu_vector.iloc[0]
 #     sigma = np.sqrt(cov.iloc[0,0])
-def expected_shortfall_normal(x:pd.Dataframe, mu:float, sigma: float, alpha = 0.05):
+def expected_shortfall_normal(mu:float, sigma: float, alpha = 0.05):
 
     # computational method using integration
     # def ev(x, mu, sigma):

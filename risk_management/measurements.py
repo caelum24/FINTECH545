@@ -25,11 +25,11 @@ def compute_correlation(x:pd.DataFrame, method="pearson", drop_missing = False, 
        x = x.dropna()
     
     if exponentially_weighted:
-        ewm_corrs_over_time = x.ewm(alpha = (1-lambda_),).corr(bias=True, method=method)
+        ewm_corrs_over_time = x.ewm(alpha = (1-lambda_),).corr() # NOT EXISTENT: bias=True, method=method
         last_ewm_corr_matrix = ewm_corrs_over_time.loc[ewm_corrs_over_time.index.get_level_values(0).max()]
         return last_ewm_corr_matrix
     else:
-        return x.corr(method=method, ddof=ddof) # default ddof = 1 (unbiased)
+        return x.corr(method=method) # default ddof = 1 (unbiased)
 
 def compute_covariance(x:pd.DataFrame, drop_missing = False, exponentially_weighted = False, lambda_ = 0.97, ddof:int=1):
     """
