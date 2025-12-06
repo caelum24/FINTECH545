@@ -1,5 +1,6 @@
 import numpy as np
 from scipy.stats import norm
+from scipy.optimize import root_scalar
 
 def European_GBSM(S, X, T, vol, r, b, option_type="call"):
     '''
@@ -11,6 +12,8 @@ def European_GBSM(S, X, T, vol, r, b, option_type="call"):
         b - is the cost of carry
 
         black scholes where rf = b
+
+        returns value, delta, gamma, vega, theta, rho, carry_rho
     '''
 
     option_type = str.lower(option_type)
@@ -40,9 +43,20 @@ def European_GBSM(S, X, T, vol, r, b, option_type="call"):
     gamma = norm.pdf(d1) * np.exp((b-r)*T) / (S * vol * np.sqrt(T))
     vega = S * np.exp((b-r)*T) * norm.pdf(d1) * np.sqrt(T)
     
-    
     return value, delta, gamma, vega, theta, rho, carry_rho
 
+def implied_vol_gbsm(price, S, X, T, r, b, option_type="call"):
+    option_type = str.lower(option_type)
+    if option_type not in ["call", "put"]:
+        raise ValueError("Option type must be call or put")
+    
+    def obj(sigma):
+        value, *_ = European_GBSM(S, X, T, sigma, r, b, option_type)
+        return value - price
+    
+    # bracket between [1e-8, 5] (500% vol upper bound)
+    sol = root_scalar(obj, bracket=[-1e-20, 10], method='bisect')
+    return sol.root
 
 def American_Binary_Tree(S, X, T, vol, r, b, N, option_type = "call"):
     option_type = str.lower(option_type)

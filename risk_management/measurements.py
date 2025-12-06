@@ -113,7 +113,7 @@ def near_psd(A: pd.DataFrame, epsilon = 0.0):
     
     return out
 
-def higham_psd(A: pd.DataFrame, tolerance = 1e-8, max_iterations= 100_000):
+def higham_psd(A: pd.DataFrame, tolerance = 1e-20, max_iterations= 100_000):
     # use higham to convert non-psd matrix into a psd neighbor
     def P_u(A):
         # TODO -> could add weights

@@ -13,8 +13,8 @@ def univariate_normal_VaR(mean: float, std: float, alpha = 0.05):
     """
         Take in a previously computed mean and standard deviation
         from some data and an alpha value
-    """
-    abs_VaR = -norm.ppf(alpha, loc = mean, scale = std)
+    """ 
+    abs_VaR = -norm.ppf(alpha, loc = mean, scale = std) # TODO -> pretty sure I flipped these, as abs should assume 0 mean
     rel_VaR = mean - norm.ppf(alpha, loc = mean, scale = std)
 
     return abs_VaR, rel_VaR
@@ -48,7 +48,7 @@ def expected_shortfall_normal(mu:float, sigma: float, alpha = 0.05):
     VaR = mu + sigma * z_alpha
     ES = mu - sigma * norm.pdf(z_alpha) / alpha
     abs_ES = -ES
-    diff_ES = -(ES - mu)
+    diff_ES = -(ES - mu) # assumes 0 mean? -> I may have abs ES and diff ES flipped TODO
 
     # delta VaR es
     # quantile = norm.ppf(alpha, loc = mu, scale = sigma)
@@ -88,6 +88,48 @@ def expected_shortfall_t(mu: float, sigma: float, nu: float, alpha: float = 0.05
     diff_ES = -(ES - mu)
 
     return abs_ES, diff_ES
+
+
+def delta_normal_var(asset_prices, weights, underlying_prices, asset_underlying_price_indices, deltas, cov, alpha = 0.05):
+    portfolio_value = weights @ asset_prices
+
+    # d asset return / d underlying return (often 1 if asset is the underlying)
+    dRA_dri = deltas * underlying_prices[asset_underlying_price_indices] / asset_prices
+
+    # how much each underlying contributes to the portfolio returns
+    weight_contributions = np.zeros((underlying_prices.shape[0], weights.shape[0]))
+    col_indices = np.arange(weights.shape[0])
+    weight_contributions[asset_underlying_price_indices, col_indices] = weights
+
+    grad_r = weight_contributions @ dRA_dri # dR / dri -> d portfolio return / d underlying return
+
+    sigma_p = np.sqrt(grad_r.T @ cov @ grad_r)
+    VaR = - portfolio_value * norm.ppf(alpha) * sigma_p
+
+    return VaR
+
+
+def delta_normal_es(asset_prices, weights, underlying_prices, asset_underlying_price_indices, deltas, cov, alpha=0.05):
+    portfolio_value = weights @ asset_prices
+
+    # d asset return / d underlying return (often 1 if asset is the underlying)
+    dRA_dri = deltas * underlying_prices[asset_underlying_price_indices] / asset_prices
+
+    # how much each underlying contributes to the portfolio returns
+    weight_contributions = np.zeros((underlying_prices.shape[0], weights.shape[0]))
+    col_indices = np.arange(weights.shape[0])
+    weight_contributions[asset_underlying_price_indices, col_indices] = weights
+
+    grad_r = weight_contributions @ dRA_dri # dR / dri -> d portfolio return / d underlying return
+
+    # zero-mean ES closed form
+    z = norm.ppf(alpha)
+    pdf_z = norm.pdf(z)
+    sigma_p = np.sqrt(grad_r.T @ cov @ grad_r)
+
+    ES = portfolio_value * sigma_p * pdf_z / alpha
+
+    return ES
 
 
 

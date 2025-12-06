@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from .distributions import fit_multivariate_normal_dist
+from .distributions import fit_multivariate_normal_dist, fit_univariate_t_dist
 from scipy.stats import norm
 from .measurements import compute_correlation
 # from measurements import higham_psd, near_psd -> fix methods
@@ -82,6 +82,124 @@ def monte_carlo_VaR_sim(mean_vector, covariance_matrix, current_prices, holdings
     abs_VaR = portfolio_value - percentile_portfolio
     rel_VaR = np.mean(sorted_values) - percentile_portfolio
     return abs_VaR, rel_VaR
+
+
+
+def copula_var_es(returns: pd.DataFrame,
+                  prices: np.ndarray,
+                  holdings: np.ndarray,
+                  fix_method,
+                  n_sims=100_000,
+                  alpha=0.05,
+                  seed=1234,
+                  marginal="normal",
+                  ):
+    """
+    Gaussian copula VaR/ES with optional t-distribution marginals.
+    marginal: "normal" or "t"
+    """
+
+    def compute_PIT(returns: pd.DataFrame, models: dict, marginal="normal"):
+        """
+            Probability integral transform -> map any random variable to uniform
+
+            Convert returns into Uniform [0,1] for later use in converting to standard normal for simulation
+        """
+        U = pd.DataFrame(index=returns.index)
+        if marginal == "normal":
+            for col in returns.columns:
+                params = models[col]
+                U[col] = norm.cdf(returns[col], **params)
+        elif marginal == "t":
+            for col in returns.columns:
+                params = models[col]
+                U[col] = t.cdf(returns[col], **params)
+        else:
+            raise ValueError("marginal must be 'normal' or 't'")
+        return U
+
+    def gaussianize(U: pd.DataFrame) -> pd.DataFrame: # get the z score from the cdf value U's
+        """
+            Convert U [0,1] to normal distribution Z scores
+        """
+        Z = pd.DataFrame(norm.ppf(U, loc=0, scale=1), columns=U.columns, index=U.index)
+        return Z
+
+    def invert_marginals(Z: np.ndarray, models: dict, columns: list, marginal="normal") -> pd.DataFrame:
+        """
+            Convert Z scores back into simulated returns from original fit distributions
+        """
+        simulated_U = norm.cdf(Z)
+        simulated_returns = pd.DataFrame(index=np.arange(Z.shape[0]), columns=columns)
+        
+        if marginal == "normal":
+            for i, col in enumerate(columns):
+                params = models[col]
+                simulated_returns[col] = norm.ppf(simulated_U[:, i], **params)
+        elif marginal == "t":
+            for i, col in enumerate(columns):
+                params = models[col]
+                simulated_returns[col] = t.ppf(simulated_U[:, i], **params)
+        return simulated_returns
+
+
+    def compute_portfolio_returns(simulated_returns: pd.DataFrame,
+                                prices: np.ndarray,
+                                holdings: np.ndarray) -> pd.Series:
+        simulated_values = simulated_returns * prices + prices # assumes arithmetic returns
+        total_values = simulated_values.dot(holdings)
+        initial_value = prices.dot(holdings)
+        portfolio_returns = (total_values - initial_value) / initial_value
+        return portfolio_returns
+
+    def compute_var_es(return_series: pd.Series, alpha=0.05):
+        sorted_returns = np.sort(return_series)
+        n = len(sorted_returns)
+        idx = int(np.floor(alpha * n))
+        VaR_pct = -sorted_returns[idx]
+        ES_pct = -sorted_returns[:idx+1].mean()
+        return VaR_pct, ES_pct
+
+    models = {}
+    if marginal == "normal":
+        for col in returns.columns:
+            mu = returns[col].mean()
+            sigma2 = returns[col].var()
+            models[col] = {"loc":mu, "scale": np.sqrt(sigma2)}
+    elif marginal == "t":
+        for col in returns.columns:
+            mu, sigma, nu = fit_univariate_t_dist(returns[col].values)
+            models[col] = {"loc":mu, "scale": sigma, "df": nu}
+    else:
+        raise ValueError("marginal must be 'normal' or 't'")
+
+    # PIT
+    U = compute_PIT(returns, models, marginal)
+
+    # Gaussianize
+    Z_data = gaussianize(U)
+
+    # Correlation
+    corr = compute_correlation(Z_data, method="spearman")
+
+    # Simulate
+    # Z_sim = simulate_gaussian_copula(corr, n_sims, seed)
+    simulated_Zs = normal_monte_carlo_simulation(mean_vector=np.zeros(len(models)), covariance_matrix=corr, n_sims=n_sims, fix_method=fix_method, seed=seed).T
+
+    # Invert marginals
+    sim_returns = invert_marginals(simulated_Zs, models, returns.columns.tolist(), marginal)
+
+    # Portfolio returns
+    portfolio_returns = compute_portfolio_returns(sim_returns, prices, holdings)
+
+    # VaR / ES
+    VaR_pct, ES_pct = compute_var_es(portfolio_returns, alpha)
+    portfolio_value = prices.dot(holdings)
+    VaR = VaR_pct * portfolio_value
+    ES = ES_pct * portfolio_value
+
+    return VaR, ES, VaR_pct, ES_pct
+
 
 
 def VaR_ES_2_level_sim_from_copula(sample_data: pd.DataFrame, holdings: np.array, prices: np.array, fix_method, n_sims = 100_000, alpha=0.05, seed=1234):
